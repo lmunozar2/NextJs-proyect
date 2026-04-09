@@ -710,7 +710,9 @@ async function main() {
     ]
 
     for (const game of gamesData) {
-        if (!game.console_id) continue
+        if (!game.console_id) {
+            throw new Error("console_id es requerido");
+        }
 
         await prisma.games.create({
             data: game,
