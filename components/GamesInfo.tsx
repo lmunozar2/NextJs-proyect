@@ -3,7 +3,9 @@ import { PrismaNeon } from "@prisma/adapter-neon";
 import SearchBar from "@/components/SearchBar";
 import Pagination from "@/components/Pagination";
 import CreateGameModal from "@/components/modals/CreateGameModal";
-import GamesClient from "@/components/modals/GamesClient";
+import EditGameButton from "@/components/modals/EditGameButton";
+import DeleteGameButton from "@/components/modals/DeleteGameButton";
+import ConsoleFilter from "@/components/modals/ConsoleFilter";
 
 const prisma = new PrismaClient({
   adapter: new PrismaNeon({
@@ -14,12 +16,13 @@ const prisma = new PrismaClient({
 const ITEMS_PER_PAGE = 12;
 
 interface GamesInfoProps {
-  searchParams?: { page?: string; search?: string };
+  searchParams?: { page?: string; search?: string; consoleId?: string }; // 👈 agregado
 }
 
 export default async function GamesInfo({ searchParams }: GamesInfoProps) {
   const currentPage = Number(searchParams?.page) || 1;
   const search = searchParams?.search ?? "";
+  const consoleId = searchParams?.consoleId ?? ""; // 👈 agregado
   const skip = (currentPage - 1) * ITEMS_PER_PAGE;
 
   const priceFilter =
@@ -27,21 +30,20 @@ export default async function GamesInfo({ searchParams }: GamesInfoProps) {
       ? { price: { equals: Number(search) } }
       : {};
 
-  const where = search
-    ? {
-        OR: [
-          { title: { contains: search, mode: "insensitive" as const } },
-          { developer: { contains: search, mode: "insensitive" as const } },
-          { genre: { contains: search, mode: "insensitive" as const } },
-          {
-            consoles: {
-              is: { name: { contains: search, mode: "insensitive" as const } },
-            },
-          },
-          ...(priceFilter.price ? [priceFilter] : []),
-        ],
-      }
-    : {};
+  // 👈 where corregido con filtro de consola independiente
+  const where = {
+    ...(consoleId ? { console_id: Number(consoleId) } : {}),
+    ...(search
+      ? {
+          OR: [
+            { title: { contains: search, mode: "insensitive" as const } },
+            { developer: { contains: search, mode: "insensitive" as const } },
+            { genre: { contains: search, mode: "insensitive" as const } },
+            ...(priceFilter.price ? [priceFilter] : []),
+          ],
+        }
+      : {}),
+  };
 
   const [games, totalGames, consoles] = await Promise.all([
     prisma.games.findMany({
@@ -64,12 +66,49 @@ export default async function GamesInfo({ searchParams }: GamesInfoProps) {
         <CreateGameModal consoles={consoles} />
       </div>
 
-      <div className="flex justify-start mb-6 mt-2">
+      <div className="flex flex-col gap-3 mb-6 mt-2">
         <SearchBar />
+        <ConsoleFilter consoles={consoles} />
       </div>
 
-      {/* 👇 Cliente */}
-      <GamesClient games={games} consoles={consoles} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {games.map(function (game) {
+          return (
+            <div
+              key={game.id}
+              className="relative w-96 h-64 rounded-2xl overflow-hidden shadow-lg cursor-pointer group"
+            >
+              <img
+                src={"imgs/" + game.cover}
+                alt={game.title}
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+              />
+              <div className="absolute inset-0 bg-black/30 group-hover:bg-black/60 transition-all duration-500" />
+
+              <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <EditGameButton game={game} consoles={consoles} />
+                <DeleteGameButton gameId={game.id} gameTitle={game.title} />
+              </div>
+
+              <div className="absolute bottom-0 left-0 right-0 p-4 transition-transform duration-500 group-hover:-translate-y-32">
+                <h2 className="text-white text-xl font-bold drop-shadow">
+                  {game.title}
+                </h2>
+              </div>
+
+              <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-full transition-transform duration-500 group-hover:translate-y-0">
+                <p className="text-white text-sm mb-1">🎮 {game.consoles.name}</p>
+                <p className="text-white text-sm mb-1">👨‍💻 {game.developer}</p>
+                <p className="text-white text-sm mb-2 line-clamp-2">{game.description}</p>
+                <div className="flex gap-2">
+                  <span className="badge badge-secondary">{game.genre}</span>
+                  <span className="badge badge-accent">${game.price}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       <Pagination
         currentPage={currentPage}
